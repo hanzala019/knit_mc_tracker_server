@@ -26,7 +26,7 @@ def get_reason_description(reason_id, reasons):
 
 @app.route("/api/mc-log", methods=["GET"])
 def home():
-    current_date =  '2024-12-29'
+    current_date =  date.today()
     reasons = db.get_all("SELECT * FROM lib_knit_mc_cause")
     # pprint(reasons[0][1])
     logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id ASC", (current_date,))
@@ -162,7 +162,7 @@ def home():
 @app.route("/api/mc-graph", methods=["GET"])
 def graph():
     machines = defaultdict(list)
-    current_date = '2024-12-29'  # Get current date in 'YYYY-MM-DD' format
+    current_date = date.today()  # Get current date in 'YYYY-MM-DD' format
     reasons = db.get_all("SELECT * FROM lib_knit_mc_cause")
     allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
 
