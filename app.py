@@ -165,7 +165,8 @@ def graph():
     current_date = date.today()  # Get current date in 'YYYY-MM-DD' format
     reasons = db.get_all("SELECT * FROM lib_knit_mc_cause")
     allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
-
+  
+    allMc = [mc[0] for mc in allMachines]  # Get all machine numbers
     # Fetch logs for current date
     logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id ASC", (current_date,))
 
@@ -185,11 +186,9 @@ def graph():
         # Convert defaultdict to a regular dictionary if needed
         machines = dict(machines)
 
-        # Ensure allMc is populated correctly
-        allMc = [mc[0] for mc in allMachines]  # Get all machine numbers
     else:
         machines = {}  # Initialize empty machines if no logs are returned
-        allMc = []
+        
 
     return jsonify({"success": True, "result": machines, "machines": allMc})
 
