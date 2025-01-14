@@ -14,6 +14,7 @@ CORS(app)
 
 db = Database()
 
+
 def get_reason_description(reason_id, reasons):
     for r_id, description in reasons:
         if r_id == reason_id:
@@ -40,13 +41,63 @@ def getStatus():
         return jsonify({"status": "Failed", "data": data})
 
 
-@app.route("/api/mc-log", methods=["GET"])
+@app.route("/api/mc-log", methods=["GET", "POST"])
 def home():
-    current_date =  date.today()
+    
     reasons = db.get_all("SELECT * FROM lib_knit_mc_cause")
-    # pprint(reasons[0][1])
-    logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id ASC", (current_date,))
+    # checking for post request
+    if request.method == 'POST':
+        
+            data = request.json
+            print(data)
+            dateFrom = data.get('dateFrom')
+            dateTo = data.get('dateTo')
+            mc_no = data.get('mc_no')
+            reason = data.get('reason')
+            
 
+            # Base query with parameterized values
+            query = "SELECT * FROM current_mc_status WHERE status_time BETWEEN %s AND %s"
+            params = [dateFrom, dateTo]
+
+            # Build conditions list and parameters
+            conditions = []
+            
+            if mc_no is not None:
+                conditions.append("mc_no = %s")
+                params.append(mc_no)
+                
+            if reason is not None:
+                # Safely get reason_id using parameterized query
+                reason_query = "SELECT id FROM lib_knit_mc_cause WHERE name = %s"
+                reason_id = db.get_one(reason_query, [reason])
+                if reason_id:
+                    conditions.append("reason_id = %s")
+                    params.append(reason_id)
+
+            # Add conditions to query if they exist
+            if conditions:
+                query += " AND " + " AND ".join(conditions)
+                
+            # Add ordering
+            query += " ORDER BY mc_no ASC, id ASC"
+
+            # Execute query with parameters
+            logs = db.get_all(query, params)
+            print(query,params)
+            print(logs)
+
+
+
+        
+    else:
+        current_date =  date.today()
+        
+        
+        # pprint(reasons[0][1])
+        logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id ASC", (current_date,))
+
+        
     result = {
     "complete": [],
     "incomplete": []
@@ -61,6 +112,7 @@ def home():
             {"id": None, "status": "Machine On", "machine": None, "reason_id": None, "timestamp": None},
         ]
     }
+    
     current_machine = None  # Temporary variable to track the current machine
     if logs:
         for row in logs:
@@ -166,13 +218,16 @@ def home():
         # Handle any leftover incomplete groups
         if any(item["timestamp"] for item in current_group["data"]):
             result["incomplete"].append(current_group["data"])
-    
-        
+        # print(result)
+
+    allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
+
+    allMc = [mc[0] for mc in allMachines if mc[0] is not None]
         # pprint(result)
-    if result["complete"]:
-        return jsonify({"success":True, "result":result})
+    if result and result["complete"]:
+        return jsonify({"success":True, "result":result, "machines": allMc})
     else :
-        return jsonify({"success":False, "result":[]})
+        return jsonify({"success":False, "result":[], "machines": allMc})
 
 
 @app.route("/api/mc-graph", methods=["GET"])
@@ -205,8 +260,10 @@ def graph():
     else:
         machines = {}  # Initialize empty machines if no logs are returned
         
-
-    return jsonify({"success": True, "result": machines, "machines": allMc})
+    if machines:
+        return jsonify({"success": True, "result": machines, "machines": allMc})
+    else:
+        return jsonify({"success": False, "result": machines, "machines": allMc})
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 5000))   # Use PORT from environment or default to 5000
