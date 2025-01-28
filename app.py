@@ -17,11 +17,11 @@ db = Database()
 
 
 def get_reason_description(reason_id, reasons):
-    print(reason_id)
+    # print(reason_id)
     for r_id, description, a,b,c,d,e in reasons:
-        print(r_id, reason_id)
+        # print(r_id, reason_id)
         if r_id == reason_id:
-            print
+           
             return description
     return None
 
@@ -163,8 +163,8 @@ def home():
 
             # Execute query with parameters
             logs = db.get_all(query, params)
-            print(query,params)
-            print(logs)
+            # print(query,params)
+            # print(logs)
 
 
 
@@ -314,6 +314,7 @@ def home():
 def graph():
     machines = defaultdict(list)
     current_date = date.today()  # Get current date in 'YYYY-MM-DD' format
+    print(current_date)
     reasons = db.get_all("SELECT * FROM lib_knit_mc_cause")
     allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
     allMc = []
