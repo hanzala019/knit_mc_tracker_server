@@ -298,7 +298,7 @@ def home():
         if any(item["timestamp"] for item in current_group["data"]):
             result["incomplete"].append(current_group["data"])
         # print(result)
-
+    allMc = []
     allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
     if allMachines is not None:
         allMc = [mc[0] for mc in allMachines if mc and mc[0] is not None] # Get all machine numbers
@@ -316,7 +316,7 @@ def graph():
     current_date = date.today()  # Get current date in 'YYYY-MM-DD' format
     reasons = db.get_all("SELECT * FROM lib_knit_mc_cause")
     allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
-  
+    allMc = []
     if allMachines is not None:
         allMc = [mc[0] for mc in allMachines if mc and mc[0] is not None] # Get all machine numbers
     # Fetch logs for current date
@@ -351,9 +351,13 @@ def graph():
     if logs:
         for row in logs:
             if row is not None:
-                
                 id, status, machine, reason_id, timestamp = row
                 print(id, status, machine, reason_id, timestamp)
+                
+                # Adjust timestamp if it's earlier than the current day
+                if timestamp.date() < current_date:  # Compare dates only
+                    timestamp = datetime.combine(current_date, datetime.min.time())  # Set to the start of the current day
+                
                 reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
                 machines[machine].append({
                     'id': id,
@@ -361,6 +365,9 @@ def graph():
                     'reason': reason_name,
                     'timestamp': timestamp
                 })
+        
+        # Convert defaultdict to a regular dictionary if needed
+        machines = dict(machines)
         
         # Convert defaultdict to a regular dictionary if needed
         machines = dict(machines)
