@@ -17,8 +17,11 @@ db = Database()
 
 
 def get_reason_description(reason_id, reasons):
-    for r_id, description in reasons:
+    print(reason_id)
+    for r_id, description, a,b,c,d,e in reasons:
+        print(r_id, reason_id)
         if r_id == reason_id:
+            print
             return description
     return None
 
@@ -324,27 +327,33 @@ def graph():
     #     WHERE id = (
     #         SELECT MAX(id) FROM current_mc_status AS t2 WHERE t1.mc_no = t2.mc_no
     #     ) ORDER By mc_no ASC""")
-    # # print(rows)
-    # latest_dict = {}
-    # if rows:
-    #     for row in rows:
-    #         print(row)
-    #         latest_dict[row[2]] = {
-    #             'id': row[0],
-    #             'status': row[1],
-    #             'reason_id': row[3],
-    #             'timestamp': row[4]
-    #         }
-
-    # # Step 3: Convert the result to a list of dictionaries if needed
-    # latest_data_list = list(latest_dict.values())
+    # print(rows)
+    # # latest_dict = {}
+    # # if rows:
+    # for row in rows:
+    #         if row is not None:
+    #             id, status, machine, reason_id, timestamp = row
+    #             reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
+    #             machines[machine].append({
+    #                 'id': id,
+    #                 'status': status,
+    #                 'reason': reason_name,
+    #                 'timestamp': timestamp
+    #             })
+        
+    #     # Convert defaultdict to a regular dictionary if needed
+    #     current_machine_states = dict(machines)
+    # # # Step 3: Convert the result to a list of dictionaries if needed
+    # # latest_data_list = list(latest_dict.values())
 
     # print(latest_data_list)
     # Filter logs by machine
     if logs:
         for row in logs:
             if row is not None:
+                
                 id, status, machine, reason_id, timestamp = row
+                print(id, status, machine, reason_id, timestamp)
                 reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
                 machines[machine].append({
                     'id': id,
