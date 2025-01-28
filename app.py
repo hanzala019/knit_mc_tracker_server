@@ -7,10 +7,12 @@ from dotenv import load_dotenv
 from model import Database
 from pprint import pprint
 from datetime import date
+import random
 from collections import defaultdict
 load_dotenv()
 app = Flask(__name__)
 CORS(app)
+
 db = Database()
 
 
@@ -20,9 +22,84 @@ def get_reason_description(reason_id, reasons):
             return description
     return None
 
+def generate_custom_string(name):
+    random_number = random.randint(1000000, 9999999)  # Generates a random 7-digit number
+    return f"{name}-{random_number}"
 
-# @app.route("/api/login", methods=["POST"])
-# def login():
+@app.route("/api/login", methods=["POST"])
+def login():
+    data = request.json
+    print(data)
+    email = data.get("email")
+    password = data.get("password")
+    user = db.get_one("SELECT * FROM users WHERE email = %s AND password = %s", (email,password,))
+    print(user)
+    if user is not None:
+        return jsonify({"status": "success", "user": user})
+    else:
+        return jsonify({"status": "Failed"})
+
+@app.route("/api/users", methods=["POST"])
+def users():
+    data = request.json
+    print(data)
+    reason = data.get("reason")
+    company = data.get("company", None)
+
+    # handling get request logic
+    if data is not None and reason == "get":
+        
+        users = db.get_all("SELECT userId, username, company, email, password, access FROM users WHERE company = %s AND userType = %s", (company, "employee",))
+        print(users)
+        keys = ['id', 'name', 'company', 'email', 'password', 'access']
+        array_of_dicts = []
+        if users is not None:
+            # Convert data into an array of dictionaries
+            for d in users :
+                data_dict = {key: value for key, value in zip(keys, d)}
+                array_of_dicts.append(data_dict)
+            print(array_of_dicts)
+            return jsonify({"status": "success", "users": array_of_dicts})
+        else:
+            return jsonify({"status": "failed", "msg": "no users found"})
+
+    # handling post request logic
+    elif  reason == "update":
+        name = data.get("name")
+        password = data.get("password")
+        email = data.get("email")
+        access = data.get("access")
+        id = data.get("id")
+        db.update("UPDATE users SET username = %s, email = %s, password = %s, access = %s WHERE userId = %s", (name,email,password,access, id,))
+        if data is not None:    
+            return jsonify({"status": "success", "data": data})
+        else:
+            return jsonify({"status": "Failed","msg": "failed to update", "data": data})
+
+    # handling put request logic
+    elif  reason == "add":
+        name = data.get("name")
+        print(data)
+        password = data.get("password")
+        email = data.get("email")
+        access = data.get("access")
+        id = generate_custom_string(company)
+        db.insert("INSERT INTO `users`(`userId`, `username`, `userType`, `company`, `password`, `email`, `access`) VALUES (%s, %s, 'employee',%s,%s,%s,%s)", (id, name,company,password,email,access,))
+        if data is not None:    
+            return jsonify({"status": "success", "data": data})
+        else:
+            return jsonify({"status": "Failed", "msg": "failed to add", "data": data})
+    
+    # handling delete request logic
+    elif  reason == "delete":
+        id = data.get("id")
+        db.delete("DELETE FROM users WHERE userId = %s", (id,))
+        if data is not None:    
+            return jsonify({"status": "success", "data": data})
+        else:
+            return jsonify({"status": "Failed","msg": "failed to delete", "data": data})
+
+
 @app.route("/api/mc-status", methods=["POST"])
 def getStatus():
     data = request.json
@@ -220,8 +297,9 @@ def home():
         # print(result)
 
     allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
+    if allMachines is not None:
+        allMc = [mc[0] for mc in allMachines if mc and mc[0] is not None] # Get all machine numbers
 
-    allMc = [mc[0] for mc in allMachines if mc[0] is not None]
         # pprint(result)
     if result and result["complete"]:
         return jsonify({"success":True, "result":result, "machines": allMc})
@@ -236,10 +314,32 @@ def graph():
     reasons = db.get_all("SELECT * FROM lib_knit_mc_cause")
     allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
   
-    allMc = [mc[0] for mc in allMachines]  # Get all machine numbers
+    if allMachines is not None:
+        allMc = [mc[0] for mc in allMachines if mc and mc[0] is not None] # Get all machine numbers
     # Fetch logs for current date
     logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id ASC", (current_date,))
+    
+    # rows = db.get_all("""  SELECT id, mc_no, status_text, reason_id, status_time
+    #     FROM current_mc_status AS t1
+    #     WHERE id = (
+    #         SELECT MAX(id) FROM current_mc_status AS t2 WHERE t1.mc_no = t2.mc_no
+    #     ) ORDER By mc_no ASC""")
+    # # print(rows)
+    # latest_dict = {}
+    # if rows:
+    #     for row in rows:
+    #         print(row)
+    #         latest_dict[row[2]] = {
+    #             'id': row[0],
+    #             'status': row[1],
+    #             'reason_id': row[3],
+    #             'timestamp': row[4]
+    #         }
 
+    # # Step 3: Convert the result to a list of dictionaries if needed
+    # latest_data_list = list(latest_dict.values())
+
+    # print(latest_data_list)
     # Filter logs by machine
     if logs:
         for row in logs:
@@ -252,10 +352,10 @@ def graph():
                     'reason': reason_name,
                     'timestamp': timestamp
                 })
-
+        
         # Convert defaultdict to a regular dictionary if needed
         machines = dict(machines)
-
+        
     else:
         machines = {}  # Initialize empty machines if no logs are returned
         
