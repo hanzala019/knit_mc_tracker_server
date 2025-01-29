@@ -15,13 +15,198 @@ CORS(app)
 
 db = Database()
 
+def process_machine_logs(logs, reasons):
+    if logs:
+        logs = sorted(logs, key=lambda x: (x[2], x[0]))
+
+    result = {
+        "complete": [],
+        "incomplete": []
+    }
+    
+    current_group = {
+        "statuses": set(),
+        "timeTaken": 0,
+        "btnDelay": 0,
+        "data": [
+            {"id": None, "status": "Machine Off", "machine": None, "reason_id": None, "timestamp": None},
+            {"id": None, "status": "Button Pressed", "machine": None, "reason_id": None, "timestamp": None},
+            {"id": None, "status": "Machine On", "machine": None, "reason_id": None, "timestamp": None},
+        ]
+    }
+    
+    current_machine = None
+
+    if not logs:
+        return result
+
+    for row in logs:
+        if row is None:
+            continue
+
+        id, status, machine, reason_id, timestamp = row
+
+        # Handle machine change
+        if machine != current_machine:
+            # Store incomplete status of previous machine
+            if len(current_group["statuses"]) > 0 and len(current_group["statuses"]) < 3:
+                result["incomplete"].append(current_group["data"])
+            
+            # Update current machine
+            current_machine = machine
+            
+            # Start new group with current status if it's Machine Off
+            if status == "Machine Off":
+                reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
+                current_group = {
+                    "statuses": {"Machine Off"},
+                    "timeTaken": 0,
+                    "btnDelay": 0,
+                    "data": [
+                        {"id": id, "status": status, "machine": machine, "reason_id": reason_name, "timestamp": timestamp},
+                        {"id": None, "status": "Button Pressed", "machine": None, "reason_id": None, "timestamp": None},
+                        {"id": None, "status": "Machine On", "machine": None, "reason_id": None, "timestamp": None},
+                    ]
+                }
+            else:
+                # Add single status to incomplete for non-Machine Off status
+                result["incomplete"].append({
+                    "id": id,
+                    "status": status,
+                    "machine": machine,
+                    "reason_id": reason_id,
+                    "timestamp": timestamp
+                })
+                current_group = {
+                    "statuses": set(),
+                    "timeTaken": 0,
+                    "btnDelay": 0,
+                    "data": [
+                        {"id": None, "status": "Machine Off", "machine": None, "reason_id": None, "timestamp": None},
+                        {"id": None, "status": "Button Pressed", "machine": None, "reason_id": None, "timestamp": None},
+                        {"id": None, "status": "Machine On", "machine": None, "reason_id": None, "timestamp": None},
+                    ]
+                }
+            continue
+
+        # Process status for current machine
+        if status in ["Machine On", "Button Pressed", "Machine Off"]:
+            # Check if status not in current group or if it's a new Machine Off after Machine On
+            if status not in current_group["statuses"] or (status == "Machine Off" and "Machine On" in current_group["statuses"]):
+                # Handle new Machine Off after Machine On
+                if status == "Machine Off" and "Machine On" in current_group["statuses"]:
+                    # Complete current group if valid
+                    if current_group["data"][0]["timestamp"] and current_group["data"][2]["timestamp"]:
+                        if current_group["data"][2]["id"] > current_group["data"][0]["id"]:
+                            current_group["timeTaken"] = (current_group["data"][2]["timestamp"] - current_group["data"][0]["timestamp"]).total_seconds()
+                        else:
+                            current_group["timeTaken"] = None
+                    result["complete"].append({
+                        "statuses": current_group["data"],
+                        "timeTaken": current_group["timeTaken"],
+                        "btnDelay": current_group["btnDelay"]
+                    })
+                    # Start new group with current Machine Off
+                    reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
+                    current_group = {
+                        "statuses": {"Machine Off"},
+                        "timeTaken": 0,
+                        "btnDelay": 0,
+                        "data": [
+                            {"id": id, "status": status, "machine": machine, "reason_id": reason_name, "timestamp": timestamp},
+                            {"id": None, "status": "Button Pressed", "machine": None, "reason_id": None, "timestamp": None},
+                            {"id": None, "status": "Machine On", "machine": None, "reason_id": None, "timestamp": None},
+                        ]
+                    }
+                    continue
+
+                # Validate sequence based on status
+                valid_sequence = True
+                if status == "Button Pressed":
+                    if current_group["data"][0]["id"] is not None:
+                        valid_sequence = id > current_group["data"][0]["id"]
+                elif status == "Machine On":
+                    if current_group["data"][0]["id"] is not None and current_group["data"][1]["id"] is not None:
+                        valid_sequence = (id > current_group["data"][0]["id"] and id > current_group["data"][1]["id"])
+
+                if valid_sequence:
+                    # Add to current group
+                    reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
+                    status_index = {"Machine Off": 0, "Button Pressed": 1, "Machine On": 2}[status]
+                    current_group["data"][status_index] = {
+                        "id": id,
+                        "status": status,
+                        "machine": machine,
+                        "reason_id": reason_name,
+                        "timestamp": timestamp
+                    }
+                    current_group["statuses"].add(status)
+
+                    # Handle complete group
+                    if len(current_group["statuses"]) == 3:
+                        if current_group["data"][0]["timestamp"] and current_group["data"][2]["timestamp"]:
+                            current_group["timeTaken"] = (current_group["data"][2]["timestamp"] - current_group["data"][0]["timestamp"]).total_seconds()
+                        if current_group["data"][1]["timestamp"]:
+                            current_group["btnDelay"] = (current_group["data"][1]["timestamp"] - current_group["data"][0]["timestamp"]).total_seconds()
+                        
+                        result["complete"].append({
+                            "statuses": current_group["data"],
+                            "timeTaken": current_group["timeTaken"],
+                            "btnDelay": current_group["btnDelay"]
+                        })
+                        # Reset current group
+                        current_group = {
+                            "statuses": set(),
+                            "timeTaken": 0,
+                            "btnDelay": 0,
+                            "data": [
+                                {"id": None, "status": "Machine Off", "machine": None, "reason_id": None, "timestamp": None},
+                                {"id": None, "status": "Button Pressed", "machine": None, "reason_id": None, "timestamp": None},
+                                {"id": None, "status": "Machine On", "machine": None, "reason_id": None, "timestamp": None},
+                            ]
+                        }
+                else:
+                    # Handle invalid sequence
+                    if any(item["timestamp"] for item in current_group["data"]):
+                        result["incomplete"].append(current_group["data"])
+                    if status == "Machine Off":
+                        # Start new group with current Machine Off
+                        reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
+                        current_group = {
+                            "statuses": {"Machine Off"},
+                            "timeTaken": 0,
+                            "btnDelay": 0,
+                            "data": [
+                                {"id": id, "status": status, "machine": machine, "reason_id": reason_name, "timestamp": timestamp},
+                                {"id": None, "status": "Button Pressed", "machine": None, "reason_id": None, "timestamp": None},
+                                {"id": None, "status": "Machine On", "machine": None, "reason_id": None, "timestamp": None},
+                            ]
+                        }
+                    else:
+                        # Reset group for invalid Button Press or Machine On
+                        current_group = {
+                            "statuses": set(),
+                            "timeTaken": 0,
+                            "btnDelay": 0,
+                            "data": [
+                                {"id": None, "status": "Machine Off", "machine": None, "reason_id": None, "timestamp": None},
+                                {"id": None, "status": "Button Pressed", "machine": None, "reason_id": None, "timestamp": None},
+                                {"id": None, "status": "Machine On", "machine": None, "reason_id": None, "timestamp": None},
+                            ]
+                        }
+
+    # Handle any remaining incomplete group
+    if any(item["timestamp"] for item in current_group["data"]):
+        result["incomplete"].append(current_group["data"])
+
+    return result
 
 def get_reason_description(reason_id, reasons):
     # print(reason_id)
     for r_id, description, a,b,c,d,e in reasons:
         # print(r_id, reason_id)
         if r_id == reason_id:
-           
+            print
             return description
     return None
 
@@ -159,11 +344,11 @@ def home():
                 query += " AND " + " AND ".join(conditions)
                 
             # Add ordering
-            query += " ORDER BY mc_no ASC, id ASC"
+            query += " ORDER BY mc_no ASC, id desc"
 
             # Execute query with parameters
             logs = db.get_all(query, params)
-            # print(query,params)
+            print(query,params)
             # print(logs)
 
 
@@ -174,132 +359,13 @@ def home():
         
         
         # pprint(reasons[0][1])
-        logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id ASC", (current_date,))
+        logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id desc", (current_date,))
 
         
-    result = {
-    "complete": [],
-    "incomplete": []
-    }
-    current_group = {
-        "statuses": set(),
-        "timeTaken": 0,
-        "btnDelay": 0,
-        "data": [
-            {"id": None, "status": "Machine Off", "machine": None, "reason_id": None, "timestamp": None},
-            {"id": None, "status": "Button Pressed", "machine": None, "reason_id": None, "timestamp": None},
-            {"id": None, "status": "Machine On", "machine": None, "reason_id": None, "timestamp": None},
-        ]
-    }
-    
-    current_machine = None  # Temporary variable to track the current machine
-    if logs:
-        for row in logs:
-            if row is not None:
-                id, status, machine, reason_id, timestamp = row
+    result = process_machine_logs(logs, reasons)
 
-                # Check if the machine has changed
-                if machine != current_machine:
-                    # storing the incomplete previous machine status
-                    if len(current_group["statuses"]) > 0 and len(current_group["statuses"]) < 3:
-                        result["incomplete"].append(current_group["data"])
-
-                
-                    # Update the current machine
-                    current_machine = machine  
-                    result["incomplete"].append({
-                        "id": id,
-                        "status": status,
-                        "machine": machine,
-                        "reason_id": reason_id,
-                        "timestamp": timestamp
-                    })
-
-                    # Reset current group
-                    current_group = {
-                        "statuses": set(),
-                        "timeTaken": 0,
-                        "btnDelay": 0,
-                        "data": [
-                            {"id": None, "status": "Machine Off", "machine": None, "reason_id": None, "timestamp": None},
-                            {"id": None, "status": "Button Pressed", "machine": None, "reason_id": None, "timestamp": None},
-                            {"id": None, "status": "Machine On", "machine": None, "reason_id": None, "timestamp": None},
-                        ]
-                    }
-                    continue
-                if status in ["Machine On", "Button Pressed", "Machine Off"]:
-                    if status not in current_group["statuses"]:
-                        reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
-
-                        if status == "Machine Off":
-                            current_group["data"][0] = {"id": id, "status": status, "machine": machine, "reason_id": reason_name, "timestamp": timestamp}
-                        elif status == "Button Pressed":
-                            current_group["data"][1] = {"id": id, "status": status, "machine": machine, "reason_id": reason_name, "timestamp": timestamp}
-                        elif status == "Machine On":
-                            current_group["data"][2] = {"id": id, "status": status, "machine": machine, "reason_id": reason_name, "timestamp": timestamp}
-
-                        current_group["statuses"].add(status)
-
-                        # Complete group handling
-                        if len(current_group["statuses"]) == 3:
-                            if current_group["data"][0]["timestamp"] and current_group["data"][2]["timestamp"]:
-                                if current_group["data"][2]["timestamp"] >= current_group["data"][0]["timestamp"]:
-                                    current_group["timeTaken"] = (current_group["data"][2]["timestamp"] - current_group["data"][0]["timestamp"]).total_seconds()
-                                else:
-                                    current_group["timeTaken"] = None  # Invalid sequence
-
-                            if current_group["data"][1]["timestamp"]:
-                                current_group["btnDelay"] = (current_group["data"][1]["timestamp"] - current_group["data"][0]["timestamp"]).total_seconds()
-
-                            result["complete"].append({
-                                "statuses": current_group["data"],
-                                "timeTaken": current_group["timeTaken"],
-                                "btnDelay": current_group["btnDelay"]
-                            })
-
-                            # Reset current group
-                            current_group = {
-                                "statuses": set(),
-                                "timeTaken": 0,
-                                "btnDelay": 0,
-                                "data": [
-                                    {"id": None, "status": "Machine Off", "machine": None, "reason_id": None, "timestamp": None},
-                                    {"id": None, "status": "Button Pressed", "machine": None, "reason_id": None, "timestamp": None},
-                                    {"id": None, "status": "Machine On", "machine": None, "reason_id": None, "timestamp": None},
-                                ]
-                            }
-
-                    # Handle invalid sequence (Machine Off after On)
-                    elif status == "Machine Off" and "Machine On" in current_group["statuses"]:
-                        if current_group["data"][0]["timestamp"] and current_group["data"][2]["timestamp"]:
-                            if current_group["data"][2]["timestamp"] >= current_group["data"][0]["timestamp"]:
-                                current_group["timeTaken"] = (current_group["data"][2]["timestamp"] - current_group["data"][0]["timestamp"]).total_seconds()
-                            else:
-                                current_group["timeTaken"] = None  # Invalid sequence
-                        result["complete"].append({
-                            "statuses": current_group["data"],
-                            "timeTaken": current_group["timeTaken"],
-                            "btnDelay": current_group["btnDelay"]
-                        })
-
-                        # Reset group with new Off
-                        current_group = {
-                            "statuses": {"Machine Off"},
-                            "timeTaken": 0,
-                            "btnDelay": 0,
-                            "data": [
-                                {"id": id, "status": status, "machine": machine, "reason_id": reason_name, "timestamp": timestamp},
-                                {"id": None, "status": "Button Pressed", "machine": None, "reason_id": None, "timestamp": None},
-                                {"id": None, "status": "Machine On", "machine": None, "reason_id": None, "timestamp": None},
-                            ]
-                        }
-
-        # Handle any leftover incomplete groups
-        if any(item["timestamp"] for item in current_group["data"]):
-            result["incomplete"].append(current_group["data"])
-        # print(result)
-    allMc = []
     allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
+    allMc = []
     if allMachines is not None:
         allMc = [mc[0] for mc in allMachines if mc and mc[0] is not None] # Get all machine numbers
 
@@ -314,26 +380,25 @@ def home():
 def graph():
     machines = defaultdict(list)
     current_date = date.today()  # Get current date in 'YYYY-MM-DD' format
-    print(current_date)
     reasons = db.get_all("SELECT * FROM lib_knit_mc_cause")
     allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
     allMc = []
     if allMachines is not None:
         allMc = [mc[0] for mc in allMachines if mc and mc[0] is not None] # Get all machine numbers
     # Fetch logs for current date
-    logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id ASC", (current_date,))
+    logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id DESC", (current_date,))
     
     # rows = db.get_all("""  SELECT id, mc_no, status_text, reason_id, status_time
     #     FROM current_mc_status AS t1
     #     WHERE id = (
     #         SELECT MAX(id) FROM current_mc_status AS t2 WHERE t1.mc_no = t2.mc_no
     #     ) ORDER By mc_no ASC""")
-    # print(rows)
+    # # print(rows)
     # # latest_dict = {}
     # # if rows:
     # for row in rows:
     #         if row is not None:
-    #             id, status, machine, reason_id, timestamp = row
+    #             id, machine, status,  reason_id, timestamp = row
     #             reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
     #             machines[machine].append({
     #                 'id': id,
@@ -342,18 +407,19 @@ def graph():
     #                 'timestamp': timestamp
     #             })
         
-    #     # Convert defaultdict to a regular dictionary if needed
-    #     current_machine_states = dict(machines)
+    #         # Convert defaultdict to a regular dictionary if needed
+    #         current_machine_states = dict(machines)
     # # # Step 3: Convert the result to a list of dictionaries if needed
     # # latest_data_list = list(latest_dict.values())
-
+    # print(current_machine_states)
+    machines = defaultdict(list)
     # print(latest_data_list)
     # Filter logs by machine
     if logs:
         for row in logs:
             if row is not None:
-                id, status, machine, reason_id, timestamp = row
-                print(id, status, machine, reason_id, timestamp)
+                id,  status, machine, reason_id, timestamp = row
+                # print(id, status, machine, reason_id, timestamp)
                 
                 # Adjust timestamp if it's earlier than the current day
                 if timestamp.date() < current_date:  # Compare dates only
@@ -369,10 +435,8 @@ def graph():
         
         # Convert defaultdict to a regular dictionary if needed
         machines = dict(machines)
-        
-        # Convert defaultdict to a regular dictionary if needed
-        machines = dict(machines)
-        
+        # print("---------------------------------------------------------")
+        # print(machines)
     else:
         machines = {}  # Initialize empty machines if no logs are returned
         
