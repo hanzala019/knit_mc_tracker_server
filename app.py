@@ -386,7 +386,7 @@ def graph():
     if allMachines is not None:
         allMc = [mc[0] for mc in allMachines if mc and mc[0] is not None] # Get all machine numbers
     # Fetch logs for current date
-    logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id DESC", (current_date,))
+    logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id ASC", (current_date,))
     
     # rows = db.get_all("""  SELECT id, mc_no, status_text, reason_id, status_time
     #     FROM current_mc_status AS t1
