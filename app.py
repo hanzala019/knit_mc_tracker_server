@@ -6,7 +6,7 @@ import json
 from dotenv import load_dotenv
 from model import Database
 from pprint import pprint
-from datetime import date
+from datetime import date, timedelta, datetime
 import random
 from collections import defaultdict
 load_dotenv()
@@ -14,6 +14,48 @@ app = Flask(__name__)
 CORS(app)
 
 db = Database()
+
+
+def filter_machine_states(machine_data):
+    filtered_data = {}
+
+    for machine, states in machine_data.items():
+        # print(states)
+        if not states:
+            continue  # Skip empty entries
+
+        if len(states) == 1: 
+            if states[0]["status"] != "Button Pressed":
+                filtered_data[machine] = states  # Keep it if not "Button Pressed"
+            continue  # Skip to next machine
+
+        # Sorting states by timestamp to ensure correct order
+        states = sorted(states, key=lambda x: x["timestamp"])
+
+        # Process the last two states only
+        s1, s2 = states[-2], states[-1]  # Take the last two states
+
+        # Apply filtering logic
+        if s1["status"] == "Machine Off" and s2["status"] == "Machine On":
+            filtered_data[machine] = [s2]  # Keep "On" only
+
+        elif s1["status"] == "Machine On" and s2["status"] == "Machine Off":
+            filtered_data[machine] = [s2]  # Keep "Off" only
+
+        elif s1["status"] == "Button Pressed" and s2["status"] == "Machine On":
+            filtered_data[machine] = [s2]  # Keep "On" only
+
+        elif s1["status"] == "Machine Off" and s2["status"] == "Button Pressed":
+            filtered_data[machine] = [s1, s2]  # Keep both
+
+        elif s1["status"] == "Button Pressed" and s2["status"] == "Machine Off":
+            filtered_data[machine] = [s2]  # Keep both
+
+        elif s1["status"] == s2["status"]:
+            # If both states are the same, keep the one with the higher ID (most recent)
+            filtered_data[machine] = [max(s1, s2, key=lambda x: x["id"])]
+
+    return filtered_data
 
 def process_machine_logs(logs, reasons):
     if logs:
@@ -388,43 +430,50 @@ def graph():
     # Fetch logs for current date
     logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id ASC", (current_date,))
     
-    # rows = db.get_all("""  SELECT id, mc_no, status_text, reason_id, status_time
-    #     FROM current_mc_status AS t1
-    #     WHERE id = (
-    #         SELECT MAX(id) FROM current_mc_status AS t2 WHERE t1.mc_no = t2.mc_no
-    #     ) ORDER By mc_no ASC""")
-    # # print(rows)
-    # # latest_dict = {}
-    # # if rows:
-    # for row in rows:
-    #         if row is not None:
-    #             id, machine, status,  reason_id, timestamp = row
+    # previous_day_query = """
+    #                 SELECT *
+    #                 FROM current_mc_status c
+    #                 JOIN (
+    #                     SELECT MAX(id) AS max_id
+    #                     FROM current_mc_status
+    #                     WHERE mc_no = %s
+    #                     AND DATE(status_time) < %s
+    #                     GROUP BY status_text
+    #                 ) latest ON c.id = latest.max_id
+    #                 ORDER BY c.id DESC
+    #                 LIMIT 2;
+    #     """
+    # # previous_entries = {}  # {machine: [entry1, entry2]}
+    
+    # for machine in allMc:
+    #     previous_rows = db.get_all(previous_day_query, (machine,current_date,))
+    #     # pprint(previous_rows)
+    #     mc = []
+    #     if previous_rows is not None:
+    #         for row in previous_rows:
+    #             print(row)
+    #             id, status, machine_num, reason_id, timestamp, max_id = row
     #             reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
-    #             machines[machine].append({
+    #             mc.append({
     #                 'id': id,
     #                 'status': status,
     #                 'reason': reason_name,
     #                 'timestamp': timestamp
     #             })
-        
-    #         # Convert defaultdict to a regular dictionary if needed
-    #         current_machine_states = dict(machines)
-    # # # Step 3: Convert the result to a list of dictionaries if needed
-    # # latest_data_list = list(latest_dict.values())
-    # print(current_machine_states)
-    machines = defaultdict(list)
+    #         machines[machine] = mc
+
+    # # pprint(machines)
+    
+    # machines = filter_machine_states(machines)
+    # pprint(machines)
+    print("------------------------------------------------------------------------------------------------------------------------")
     # print(latest_data_list)
     # Filter logs by machine
     if logs:
         for row in logs:
             if row is not None:
                 id,  status, machine, reason_id, timestamp = row
-                # print(id, status, machine, reason_id, timestamp)
-                
-                # Adjust timestamp if it's earlier than the current day
-                if timestamp.date() < current_date:  # Compare dates only
-                    timestamp = datetime.combine(current_date, datetime.min.time())  # Set to the start of the current day
-                
+                # print(id, status, machine, reason_id, timestamp)         
                 reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
                 machines[machine].append({
                     'id': id,
@@ -432,15 +481,10 @@ def graph():
                     'reason': reason_name,
                     'timestamp': timestamp
                 })
-        
-        # Convert defaultdict to a regular dictionary if needed
-        machines = dict(machines)
-        # print("---------------------------------------------------------")
-        # print(machines)
-    else:
-        machines = {}  # Initialize empty machines if no logs are returned
-        
+
     if machines:
+        machines = dict(machines)
+        pprint(machines)
         return jsonify({"success": True, "result": machines, "machines": allMc})
     else:
         return jsonify({"success": False, "result": machines, "machines": allMc})
