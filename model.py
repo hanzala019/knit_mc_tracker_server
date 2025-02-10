@@ -18,7 +18,6 @@ class Database:
                 user=os.getenv("USER"),
                 password=os.getenv("PASSWORD"),
                 database=os.getenv("DB"),
-                connection_timeout=28800,  # Increase timeout
                 autocommit=True  # Enable auto-commit
                 # cursorclass=pymysql.cursors.DictCursor
             )
