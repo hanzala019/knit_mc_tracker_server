@@ -18,6 +18,11 @@ db = Database()
 
 def filter_machine_states(machine_data):
     filtered_data = {}
+    # Get current date
+    today = date.today()
+
+    # Set time to start of the day
+    startOfToday = datetime.combine(today, datetime.min.time())
 
     for machine, states in machine_data.items():
         # print(states)
@@ -37,23 +42,31 @@ def filter_machine_states(machine_data):
 
         # Apply filtering logic
         if s1["status"] == "Machine Off" and s2["status"] == "Machine On":
+            s2["timestamp"] = startOfToday
             filtered_data[machine] = [s2]  # Keep "On" only
 
         elif s1["status"] == "Machine On" and s2["status"] == "Machine Off":
-            filtered_data[machine] = [s2]  # Keep "Off" only
+             s2["timestamp"] = startOfToday
+             filtered_data[machine] = [s2]  # Keep "Off" only
 
         elif s1["status"] == "Button Pressed" and s2["status"] == "Machine On":
-            filtered_data[machine] = [s2]  # Keep "On" only
+             s2["timestamp"] = startOfToday
+             filtered_data[machine] = [s2]  # Keep "On" only
 
         elif s1["status"] == "Machine Off" and s2["status"] == "Button Pressed":
-            filtered_data[machine] = [s1, s2]  # Keep both
+             s2["timestamp"] = startOfToday
+             s1["timestamp"] = startOfToday
+             filtered_data[machine] = [s1, s2]  # Keep both
 
         elif s1["status"] == "Button Pressed" and s2["status"] == "Machine Off":
-            filtered_data[machine] = [s2]  # Keep both
+             s2["timestamp"] = startOfToday
+             filtered_data[machine] = [s2]  # Keep "Off" only
 
         elif s1["status"] == s2["status"]:
-            # If both states are the same, keep the one with the higher ID (most recent)
-            filtered_data[machine] = [max(s1, s2, key=lambda x: x["id"])]
+             s2["timestamp"] = startOfToday
+             s1["timestamp"] = startOfToday
+             # If both states are the same, keep the one with the higher ID (most recent)
+             filtered_data[machine] = [max(s1, s2, key=lambda x: x["id"])]
 
     return filtered_data
 
@@ -430,41 +443,42 @@ def graph():
     # Fetch logs for current date
     logs = db.get_all("SELECT * FROM `current_mc_status` WHERE DATE(status_time) = %s ORDER BY current_mc_status.mc_no ASC, current_mc_status.id ASC", (current_date,))
     
-    # previous_day_query = """
-    #                 SELECT *
-    #                 FROM current_mc_status c
-    #                 JOIN (
-    #                     SELECT MAX(id) AS max_id
-    #                     FROM current_mc_status
-    #                     WHERE mc_no = %s
-    #                     AND DATE(status_time) < %s
-    #                     GROUP BY status_text
-    #                 ) latest ON c.id = latest.max_id
-    #                 ORDER BY c.id DESC
-    #                 LIMIT 2;
-    #     """
-    # # previous_entries = {}  # {machine: [entry1, entry2]}
+    previous_day_query = """
+                    SELECT *
+                    FROM current_mc_status c
+                    JOIN (
+                        SELECT MAX(id) AS max_id
+                        FROM current_mc_status
+                        WHERE mc_no = %s
+                        AND DATE(status_time) < %s
+                        GROUP BY status_text
+                    ) latest ON c.id = latest.max_id
+                    ORDER BY c.id DESC
+                    LIMIT 2;
+        """
+    # previous_entries = {}  # {machine: [entry1, entry2]}
     
-    # for machine in allMc:
-    #     previous_rows = db.get_all(previous_day_query, (machine,current_date,))
-    #     # pprint(previous_rows)
-    #     mc = []
-    #     if previous_rows is not None:
-    #         for row in previous_rows:
-    #             print(row)
-    #             id, status, machine_num, reason_id, timestamp, max_id = row
-    #             reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
-    #             mc.append({
-    #                 'id': id,
-    #                 'status': status,
-    #                 'reason': reason_name,
-    #                 'timestamp': timestamp
-    #             })
-    #         machines[machine] = mc
+    for machine in allMc:
+        previous_rows = db.get_all(previous_day_query, (machine,current_date,))
+        # pprint(previous_rows)
+        mc = []
+        if previous_rows is not None:
+            for row in previous_rows:
+                print(row)
+                id, status, machine_num, reason_id, timestamp, max_id = row
+                reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
+                mc.append({
+                    'id': id,
+                    'status': status,
+                    'reason': reason_name,
+                    'timestamp': timestamp,
+                    'startTime': timestamp
+                })
+            machines[machine] = mc
 
-    # # pprint(machines)
+    # pprint(machines)
     
-    # machines = filter_machine_states(machines)
+    machines = filter_machine_states(machines)
     # pprint(machines)
     print("------------------------------------------------------------------------------------------------------------------------")
     # print(latest_data_list)
@@ -479,12 +493,13 @@ def graph():
                     'id': id,
                     'status': status,
                     'reason': reason_name,
-                    'timestamp': timestamp
+                    'timestamp': timestamp,
+                    'startTime': timestamp
                 })
 
     if machines:
         machines = dict(machines)
-        pprint(machines)
+        # pprint(machines)
         return jsonify({"success": True, "result": machines, "machines": allMc})
     else:
         return jsonify({"success": False, "result": machines, "machines": allMc})
