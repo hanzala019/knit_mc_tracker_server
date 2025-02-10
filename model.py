@@ -5,6 +5,10 @@ from dotenv import load_dotenv
 class Database:
     def __init__(self):
         load_dotenv()
+        # print(os.getenv("HOST"))
+        # print(os.getenv("USER"))
+        # print(os.getenv("PASSWORD"))
+        # print(os.getenv("DB"))
         try:
             # Establish connection
             self.connection = pymysql.connect(
@@ -14,6 +18,9 @@ class Database:
                 user=os.getenv("USER"),
                 password=os.getenv("PASSWORD"),
                 database=os.getenv("DB"),
+                connection_timeout=28800,  # Increase timeout
+                autocommit=True  # Enable auto-commit
+                # cursorclass=pymysql.cursors.DictCursor
             )
             print("Connected to the database!")
         except pymysql.MySQLError as e:
