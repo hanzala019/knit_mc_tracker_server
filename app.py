@@ -457,7 +457,7 @@ def graph():
                     LIMIT 2;
         """
     # previous_entries = {}  # {machine: [entry1, entry2]}
-    allMc = allMc[:1] # comment this line out to display all machines
+    # allMc = allMc[:1] # comment this line out to display all machines
     for machine in allMc:
         previous_rows = db.get_all(previous_day_query, (machine,current_date,))
         # pprint(previous_rows)
