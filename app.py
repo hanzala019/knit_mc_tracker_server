@@ -431,6 +431,18 @@ def home():
         return jsonify({"success":False, "result":[], "machines": allMc})
 
 
+@app.route("/api/mc-report", methods=["GET"])
+def report():
+    current_date = date.today()
+    allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
+    allMc = []
+    if allMachines is not None:
+        allMc = [mc[0] for mc in allMachines if mc and mc[0] is not None] # Get all machine numbers
+
+    logs = db.get_all("SELECT c.id, c.status_text,c.mc_no, r.name,c.status_time FROM `current_mc_status`as c  LEFT JOIN lib_knit_mc_cause as r  on c.reason_id = r.id WHERE date(c.status_time) = %s ORDER BY c.id ", (current_date,))
+     
+    return jsonify({"success": True, "result": logs, "machines": allMc})
+
 @app.route("/api/mc-graph", methods=["GET"])
 def graph():
     machines = defaultdict(list)
