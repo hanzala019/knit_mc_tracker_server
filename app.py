@@ -53,6 +53,10 @@ def filter_machine_states(machine_data):
              s2["timestamp"] = startOfToday
              filtered_data[machine] = [s2]  # Keep "On" only
 
+        elif s1["status"] == "Machine On" and s2["status"] == "Button Pressed":
+             s1["timestamp"] = startOfToday
+             filtered_data[machine] = [s1]  # Keep "On" only
+
         elif s1["status"] == "Machine Off" and s2["status"] == "Button Pressed":
              s2["timestamp"] = startOfToday
              s1["timestamp"] = startOfToday
@@ -424,12 +428,25 @@ def home():
     if allMachines is not None:
         allMc = [mc[0] for mc in allMachines if mc and mc[0] is not None] # Get all machine numbers
 
-        # pprint(result)
+    pprint(logs)
     if result and result["complete"]:
         return jsonify({"success":True, "result":result, "machines": allMc})
     else :
         return jsonify({"success":False, "result":[], "machines": allMc})
 
+
+@app.route("/api/mc-report", methods=["GET"])
+def report():
+    current_date = date.today()
+    # current_date = "2025-02-10"
+    allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
+    allMc = []
+    if allMachines is not None:
+        allMc = [mc[0] for mc in allMachines if mc and mc[0] is not None] # Get all machine numbers
+
+    logs = db.get_all("SELECT * FROM `machine_logs_test` WHERE date(off_time) = %s  ", (current_date,))
+     
+    return jsonify({"success": True, "result": logs, "machines": allMc})
 
 @app.route("/api/mc-graph", methods=["GET"])
 def graph():
@@ -464,7 +481,7 @@ def graph():
         mc = []
         if previous_rows is not None:
             for row in previous_rows:
-                print(row)
+                # print(row)
                 id, status, machine_num, reason_id, timestamp, max_id = row
                 reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
                 mc.append({
@@ -476,11 +493,12 @@ def graph():
                 })
             machines[machine] = mc
 
+    # # pprint(machines)
     # pprint(machines)
-    
+    # print("------------------------------------------------------------------------------------------------------------------------")
     machines = filter_machine_states(machines)
     # pprint(machines)
-    print("------------------------------------------------------------------------------------------------------------------------")
+    # print("------------------------------------------------------------------------------------------------------------------------")
     # print(latest_data_list)
     # Filter logs by machine
     if logs:
@@ -489,6 +507,10 @@ def graph():
                 id,  status, machine, reason_id, timestamp = row
                 # print(id, status, machine, reason_id, timestamp)         
                 reason_name = get_reason_description(reason_id, reasons) if status == "Button Pressed" else None
+
+                if machine not in machines:
+                    machines[machine] = []
+
                 machines[machine].append({
                     'id': id,
                     'status': status,
@@ -498,6 +520,7 @@ def graph():
                 })
 
     if machines:
+        pprint(machines)
         machines = dict(machines)
         # pprint(machines)
         return jsonify({"success": True, "result": machines, "machines": allMc})
@@ -534,3 +557,7 @@ if __name__ == '__main__':
 #         return jsonify({"success":True, "result":results})
 #     else :
 #         return jsonify({"success":False, "result":[]})
+#
+
+
+# roll cutting - 2min, maintenance - 10min, program change - 15min,
