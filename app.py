@@ -352,12 +352,14 @@ def getStatus():
     data = request.json
     print(data)
     # Access mc_no and other fields
-    mc_no =  data.get('mc_no', 1)
+    mc_no =  data.get('mc_no')
     status_text = data.get('state')
     timestamp = data.get('timestamp')
     reason_id = data.get('reason_id')
 
-    if data is not None:
+    last_status = db.get_all("SELECT status_text FROM `current_mc_status` WHERE mc_no = %s order by id desc limit 1", (mc_no,))
+    print("statuses: ", status_text, last_status)
+    if data is not None and status_text != last_status:
         db.insert("INSERT INTO `current_mc_status`( `status_text`, `mc_no`, `reason_id`, `status_time`) VALUES (%s,%s,%s,%s)", (status_text,mc_no,reason_id,timestamp,))
         return jsonify({"status": "success", "data": data})
     else:
@@ -435,17 +437,38 @@ def home():
         return jsonify({"success":False, "result":[], "machines": allMc})
 
 
-@app.route("/api/mc-report", methods=["GET"])
+from flask import Flask, jsonify, request
+from datetime import date
+
+@app.route("/api/mc-report", methods=["POST"])
 def report():
-    current_date = date.today()
-    # current_date = "2025-02-10"
+    # Get date range from JSON body
+    data = request.get_json() or {}
+    print(data)
+    from_date = data.get('from_date', date.today())
+    to_date = data.get('to_date', date.today())
+
+    # Validate and parse dates
+    try:
+        if from_date > to_date:
+            from_date, to_date = to_date, from_date # interchangin their values
+    except ValueError:
+        # If invalid dates, default to today
+        from_date = to_date = date.today()
+
+    # Fetch all machine numbers (unchanged)
     allMachines = db.get_all("SELECT DISTINCT mc_no FROM `current_mc_status`")
     allMc = []
     if allMachines is not None:
-        allMc = [mc[0] for mc in allMachines if mc and mc[0] is not None] # Get all machine numbers
+        allMc = [mc[0] for mc in allMachines if mc and mc[0] is not None]
 
-    logs = db.get_all("SELECT * FROM `machine_logs_test` WHERE date(off_time) = %s  ", (current_date,))
-     
+    # Fetch logs within the date range
+    logs = db.get_all(
+        "SELECT * FROM `machine_logs_test` WHERE date(off_time) BETWEEN %s AND %s",
+        (from_date, to_date)
+    )
+    print(from_date, to_date)
+    # pprint(logs)
     return jsonify({"success": True, "result": logs, "machines": allMc})
 
 @app.route("/api/mc-graph", methods=["GET"])
