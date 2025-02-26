@@ -359,10 +359,11 @@ def getStatus():
 
     last_status = db.get_one("SELECT status_text FROM `current_mc_status` WHERE mc_no = %s order by id desc", (mc_no,))
     print("statuses: ", status_text, last_status)
-    if data is not None and status_text != last_status:
+    if data is not None and (status_text == "Button Pressed"  or (last_status is None or status_text != last_status[0])):
         db.insert("INSERT INTO `current_mc_status`( `status_text`, `mc_no`, `reason_id`, `status_time`) VALUES (%s,%s,%s,%s)", (status_text,mc_no,reason_id,timestamp,))
         return jsonify({"status": "success", "data": data})
     else:
+        print(f"Status Same: current-> {status_text} = new-> {last_status[0]}")
         return jsonify({"status": "Failed", "data": data})
 
 
