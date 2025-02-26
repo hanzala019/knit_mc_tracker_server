@@ -357,7 +357,7 @@ def getStatus():
     timestamp = data.get('timestamp')
     reason_id = data.get('reason_id')
 
-    last_status = db.get_all("SELECT status_text FROM `current_mc_status` WHERE mc_no = %s order by id desc limit 1", (mc_no,))
+    last_status = db.get_one("SELECT status_text FROM `current_mc_status` WHERE mc_no = %s order by id desc", (mc_no,))
     print("statuses: ", status_text, last_status)
     if data is not None and status_text != last_status:
         db.insert("INSERT INTO `current_mc_status`( `status_text`, `mc_no`, `reason_id`, `status_time`) VALUES (%s,%s,%s,%s)", (status_text,mc_no,reason_id,timestamp,))
