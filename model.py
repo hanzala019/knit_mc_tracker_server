@@ -5,25 +5,30 @@ from dotenv import load_dotenv
 class Database:
     def __init__(self):
         load_dotenv()
-        # print(os.getenv("HOST"))
-        # print(os.getenv("USER"))
-        # print(os.getenv("PASSWORD"))
-        # print(os.getenv("DB"))
+        self._connect()
+
+    def _connect(self):
+        self.connection = pymysql.connect(
+            host=os.getenv("HOST"),
+            user=os.getenv("USER"),
+            password=os.getenv("PASSWORD"),
+            database=os.getenv("DB"),
+            charset="utf8mb4",
+            connect_timeout=10,
+            read_timeout=120,
+            write_timeout=120,
+            autocommit=True
+        )
+        print("Connected to the database!")
+
+    def _ensure_connection(self):
         try:
-            # Establish connection
-            self.connection = pymysql.connect(
-                charset="utf8mb4",
-                connect_timeout=10,
-                host=os.getenv("HOST"),
-                user=os.getenv("USER"),
-                password=os.getenv("PASSWORD"),
-                database=os.getenv("DB"),
-                autocommit=True  # Enable auto-commit
-                # cursorclass=pymysql.cursors.DictCursor
-            )
-            print("Connected to the database!")
-        except pymysql.MySQLError as e:
-            print(f"Error connecting to the database: {e}")
+            # ping(reconnect=True) will attempt reconnect automatically
+            self.connection.ping(reconnect=True)
+        except pymysql.MySQLError:
+            print("Reconnecting to the database…")
+            self._connect()
+            
 
     def get_all(self, query, params=None):
         cursor = self.connection.cursor()
